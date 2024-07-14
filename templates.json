@@ -1,0 +1,1 @@
+{"yahoo_finance": {"title": "h1[data-test-locator=\"headline\"]", "author": "span.caas-author-byline-collapse", "date": {"selector": "time", "attribute": "datetime", "index": [0]}, "article": "div.caas-body", "ticker_symbols": {"selector": "div.caas-body-content", "attribute": "data-symbol", "index": [0], "inner": {"selector": "fin-ticker", "attribute": "symbol"}}}}
