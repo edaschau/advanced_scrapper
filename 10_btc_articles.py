@@ -1,4 +1,6 @@
 import json
+from dateutil import parser
+import time
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
@@ -27,9 +29,11 @@ template_data = {
     'template': {
         'title': 'h1[data-test-locator="headline"]',
         'author': 'span.caas-author-byline-collapse',
-        'date': {'selector': 'time', 'attribute': 'datetime', 'index': [0]},
+        'datetime': {'selector': 'time', 'attribute': 'datetime', 'index': [0]},
         'article': 'div.caas-body',
         'ticker_symbols': {'selector': 'div.caas-body-content', 'attribute': 'data-symbol', 'index': [0], 'inner': {'selector': 'fin-ticker', 'attribute': 'symbol'}},
+        'source': 'a[class="link caas-attr-provider-logo"]',
+        'sourcr_url': {'selector': 'a[class="link caas-attr-provider-logo"]', 'attribute': 'href', 'index': [0]},
     }
 }
 
@@ -48,7 +52,8 @@ def initialize_database():
             url TEXT PRIMARY KEY,
             title TEXT,
             author TEXT,
-            date TEXT,
+            datetime_utc TIMESTAMP,
+            datetime_unix INTEGER,
             content TEXT,
             ticker_symbols TEXT,
             FOREIGN KEY (url) REFERENCES links (url)
@@ -80,20 +85,32 @@ def store_article(url, article_data):
     # Convert all values to strings or None
     title = str(article_data.get('title')) if article_data.get('title') is not None else None
     author = str(article_data.get('author')) if article_data.get('author') is not None else None
-    date = str(article_data.get('date')) if article_data.get('date') is not None else None
+    datetime = str(article_data.get('datetime')[0]) if article_data.get('datetime') is not None else None
     content = str(article_data.get('article')) if article_data.get('article') is not None else None
     ticker_symbols = json.dumps(article_data.get('ticker_symbols')) if article_data.get('ticker_symbols') is not None else None
     
+    # print(datetime)
+    # Convert date to UTC and UNIX timestamps
+    datetime_utc = None
+    datetime_unix = None
+    if datetime:
+        try:
+            parsed_date = parser.parse(datetime)
+            datetime_utc = parsed_date.strftime('%Y-%m-%d %H:%M:%S')
+            datetime_unix = int(time.mktime(parsed_date.timetuple()))
+        except ValueError:
+            logging.warning(f"Invalid date format for URL {url}: {datetime}")    
+    
     cur.execute("""
-        INSERT OR REPLACE INTO articles (url, title, author, date, content, ticker_symbols)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (url, title, author, date, content, ticker_symbols))
+        INSERT OR REPLACE INTO articles (url, title, author, content, datetime_utc, datetime_unix, ticker_symbols)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (url, title, author, content, datetime_utc, datetime_unix, ticker_symbols))
     
     cur.execute("UPDATE links SET is_scraped = 1 WHERE url = ?", (url,))
     
     conn.commit()
     conn.close()
-    
+
 def initialize_browser(worker_id):
     options = Options()
     # options.add_argument('-headless')
@@ -237,8 +254,6 @@ def main():
             unscraped_links = get_unscraped_links()
             
             if not unscraped_links:
-                print("No new links to scrape. Waiting...")
-                time.sleep(60)  # Wait for 1 minute before checking again
                 continue
 
             for link in unscraped_links:
